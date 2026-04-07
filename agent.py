@@ -6,6 +6,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
+
+from metric import AgentMetrics
+from logger import log_interaction
 from tools import search_flights, search_hotels, calculate_budget
 from dotenv import load_dotenv
 import os
@@ -50,7 +53,7 @@ def agent_node(state: AgentState):
 
 # 5. Xây dựng Graph
 builder = StateGraph(AgentState)
-
+# 2 node chính agent và tools
 builder.add_node("agent", agent_node)
 tool_node = ToolNode(tools_list)
 builder.add_node("tools", tool_node)
@@ -61,8 +64,10 @@ builder.add_edge(START, "agent")
 builder.add_conditional_edges("agent", tools_condition)
 
 builder.add_edge("tools", "agent")
+
+# memory 
 memory = MemorySaver()
-# Biên dịch Graph
+# build Graph
 graph = builder.compile(checkpointer=memory)
 
 # 6. Chat loop
@@ -72,16 +77,30 @@ if __name__ == "__main__":
     print(" Gõ 'quit' để thoát")
     print("="*60)
     
+    config = {"configurable": {"thread_id": "1"}} 
+    tracker = AgentMetrics() # Khởi tạo bộ đo lường
+
     while True:
         user_input = input("\nBạn: ").strip()
         if user_input.lower() in ("quit", "exit", "q"):
             break
             
         print("\nTravelBuddy đang suy nghĩ...")
+        tracker.start_timer()
+
+        result = graph.invoke(
+            {"messages": [("human", user_input)]}, 
+            config=config
+        )
+        latency = tracker.stop_timer()
+        final_message = result["messages"][-1]
+        tokens = tracker.extract_tokens(final_message)
         
-        # Gọi Graph xử lý input của người dùng
-        result = graph.invoke({"messages": [("human", user_input)]})
+        metrics_data = {
+            "latency": latency,
+            **tokens
+        }
+        print(f"\nTravelBuddy: {final_message.content}")
         
-        # Lấy tin nhắn cuối cùng trong mảng messages làm kết quả
-        final = result["messages"][-1]
-        print(f"\nTravelBuddy: {final.content}")
+        #Ghi log lại
+        log_interaction(user_input, final_message.content, metrics_data)

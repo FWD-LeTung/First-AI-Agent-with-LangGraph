@@ -128,6 +128,7 @@ def calculate_budget(total_budget: int, expenses: str) -> str:
     total_expense = sum(expense_dict.values())
     remaining = total_budget - total_expense
     
+    # in ra bang chi phi
     result = "Bảng chi phí:\n"
     for name, amount in expense_dict.items():
         clean_name = name.replace('_', ' ').capitalize()
